@@ -949,14 +949,21 @@ function CustomerDrawer({ customer, orders, onClose }) {
   );
 }
 
-function Login({ onLogin }) {
-  const [apiInput, setApiInput] = useState(() => {
-    try {
-      return localStorage.getItem('pb_api') || API_URL;
-    } catch {
+function getSavedApiUrl() {
+  try {
+    let saved = localStorage.getItem('pb_api');
+    if (saved && (saved.includes('chat-bot-server-production-2ace') || saved.includes('phasalbazar.up.railway.app'))) {
+      localStorage.setItem('pb_api', API_URL);
       return API_URL;
     }
-  })
+    return saved || API_URL;
+  } catch {
+    return API_URL;
+  }
+}
+
+function Login({ onLogin }) {
+  const [apiInput, setApiInput] = useState(() => getSavedApiUrl())
   const [pass, setPass] = useState(() => { try { return localStorage.getItem('pb_token') || '' } catch { return '' } })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1514,7 +1521,7 @@ export default function App() {
   const [auth, setAuth] = useState(() => {
     try {
       const t = localStorage.getItem('pb_token');
-      const a = localStorage.getItem('pb_api') || API_URL;
+      const a = getSavedApiUrl();
       return t ? { api: a, token: t } : null;
     } catch {
       return null;
