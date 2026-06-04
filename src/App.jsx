@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import Broadcast from './Broadcast'
 
-const API_URL = 'https://phasalbazar.up.railway.app'
+const API_URL = 'https://api.phasalbazar.com'
 
 const STATUS_CONFIG = {
   pending: { label: 'Pending', color: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
