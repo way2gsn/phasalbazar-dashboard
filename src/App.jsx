@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import Broadcast from './Broadcast'
 
-const API_URL = 'http://localhost:3000'
+const API_URL = 'https://chat-bot-server-production-2ace.up.railway.app'
 
 const STATUS_CONFIG = {
   pending: { label: 'Pending', color: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
