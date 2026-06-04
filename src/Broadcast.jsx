@@ -381,6 +381,27 @@ export default function Broadcast({ api, token, onBack }) {
         {/* ── LEFT ────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+          {/* WhatsApp API Policy Note */}
+          <div style={{
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 12,
+            padding: '12px 16px',
+            display: 'flex',
+            gap: 12,
+            alignItems: 'flex-start',
+            boxShadow: '0 1px 2px rgba(30,58,138,0.02)',
+            animation: 'fadeIn .3s ease'
+          }}>
+            <span style={{ fontSize: 18, lineHeight: 1 }}>💡</span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#1E3A8A', marginBottom: 2 }}>WhatsApp Policy Notice</div>
+              <div style={{ fontSize: 12.5, color: '#1D4ED8', lineHeight: 1.5 }}>
+                To contact a customer who hasn't messaged you in the last 24 hours, you <strong>must</strong> send a Meta-approved template message. Once the customer replies, a 24-hour session window opens during which you can send regular custom messages.
+              </div>
+            </div>
+          </div>
+
           {/* Composer */}
           <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14,
             padding: '22px 24px', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
