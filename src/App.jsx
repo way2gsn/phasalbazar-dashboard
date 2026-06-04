@@ -78,6 +78,36 @@ function PayBadge({ method }) {
   )
 }
 
+function CustTypeBadge({ type }) {
+  const isWholesale = type === 'wholesale'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: isWholesale ? '#F5F3FF' : '#ECFDF5',
+      color: isWholesale ? '#6D28D9' : '#047857',
+      borderRadius: 99, padding: '3px 9px', fontSize: 12, fontWeight: 600, textTransform: 'capitalize'
+    }}>
+      {isWholesale ? '🏪 Wholesale' : '🛒 Retail'}
+    </span>
+  )
+}
+
+function LangBadge({ lang }) {
+  const names = { en: '🇬🇧 EN', hi: '🇮🇳 HI', ta: '🇮🇳 TA', te: '🇮🇳 TE' }
+  const bg = { en: '#EFF6FF', hi: '#FEF3C7', ta: '#F3F4F6', te: '#FDF2F8' }
+  const color = { en: '#1D4ED8', hi: '#B45309', ta: '#374151', te: '#BE185D' }
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: bg[lang] || '#F3F4F6',
+      color: color[lang] || '#374151',
+      borderRadius: 99, padding: '3px 9px', fontSize: 12, fontWeight: 600
+    }}>
+      {names[lang] || String(lang).toUpperCase()}
+    </span>
+  )
+}
+
 function Toast({ msg, type, onClose }) {
   useEffect(() => { const t = setTimeout(onClose, 4500); return () => clearTimeout(t) }, [onClose])
   const err = type === 'error'
@@ -268,6 +298,7 @@ function Login({ onLogin }) {
 
 function Dashboard({ api, token, onLogout }) {
   const [orders, setOrders] = useState([])
+  const [users, setUsers] = useState([])
   const [stats, setStats] = useState({})
   const [view, setView] = useState('orders')
   const [search, setSearch] = useState('')
@@ -276,7 +307,7 @@ function Dashboard({ api, token, onLogout }) {
   const [syncing, setSyncing] = useState(false)
   const [syncTime, setSyncTime] = useState('')
   const [toasts, setToasts] = useState([])
-  const [page, setPage] = useState('dashboard') // 'dashboard' or 'broadcast'
+  const [page, setPage] = useState('dashboard') // 'dashboard' or 'broadcast' or 'users'
   const prevIds = useRef(new Set())
 
   const addToast = useCallback((msg, type = 'success') => {
@@ -286,12 +317,14 @@ function Dashboard({ api, token, onLogout }) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setSyncing(true)
     try {
-      const [oRes, sRes] = await Promise.all([
+      const [oRes, sRes, uRes] = await Promise.all([
         fetch(`${api}/admin/orders`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${api}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${api}/admin/users`, { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const newOrders = await oRes.json()
       const newStats = await sRes.json()
+      const newUsers = await uRes.json()
       const newPending = newOrders.filter(o => o.orderStatus === 'pending' && !prevIds.current.has(o.orderId))
       if (newPending.length && prevIds.current.size) {
         newPending.forEach(o => addToast(`New order from ${o.customerPhone} — ₹${o.total}`))
@@ -299,7 +332,9 @@ function Dashboard({ api, token, onLogout }) {
           newPending.forEach(o => new Notification('🌾 New Order', { body: `₹${o.total} from ${o.customerPhone}` }))
       }
       prevIds.current = new Set(newOrders.map(o => o.orderId))
-      setOrders(newOrders); setStats(newStats)
+      setOrders(newOrders);
+      setUsers(newUsers);
+      setStats({ ...newStats, usersCount: newUsers.length });
       setSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))
     } catch { addToast('Failed to load', 'error') }
     setLoading(false); setSyncing(false)
@@ -339,6 +374,22 @@ function Dashboard({ api, token, onLogout }) {
     addToast(`Exported ${rows.length} orders`)
   }
 
+  const exportUsersExcel = () => {
+    const rows = users.map(u => ({
+      'Phone': u.phone,
+      'Name': u.name || '',
+      'Address': u.address || '',
+      'Customer Type': u.customerType || 'retail',
+      'Language': u.lang || 'en',
+      'Joined Date': fmtDate(u.createdAt)
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers')
+    XLSX.writeFile(wb, `phasal-bazar-customers-${new Date().toISOString().split('T')[0]}.xlsx`)
+    addToast(`Exported ${rows.length} customers`)
+  }
+
   const statusFilter = view === 'orders' ? null : view
   const filtered = orders
     .filter(o => !statusFilter || o.orderStatus === statusFilter)
@@ -355,12 +406,22 @@ function Dashboard({ api, token, onLogout }) {
   const COLS = ['Order ID', 'Customer', 'Items', 'Date', 'Amount', 'Payment', 'Status']
   const GRID = '120px 1fr 1.4fr 130px 80px 80px 110px'
 
+  const filteredUsers = users.filter(u => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (u.phone || '').includes(q) || (u.name || '').toLowerCase().includes(q) || (u.address || '').toLowerCase().includes(q)
+  })
+
+  const USER_COLS = ['Phone / WhatsApp', 'Name', 'Delivery Address', 'Type', 'Language', 'Joined Date']
+  const USER_GRID = '170px 140px 1fr 110px 90px 140px'
+
   const NAV = [
     { id: 'orders', icon: '📋', label: 'All Orders', count: stats.total },
     { id: 'pending', icon: '⏳', label: 'Pending', count: stats.pending },
     { id: 'confirmed', icon: '✅', label: 'Confirmed', count: stats.confirmed },
     { id: 'delivered', icon: '📦', label: 'Delivered', count: stats.delivered },
     { id: 'cancelled', icon: '❌', label: 'Cancelled', count: stats.cancelled },
+    { id: 'users', icon: '👥', label: 'Customers', count: stats.usersCount },
     { id: 'broadcast', icon: '📢', label: 'Broadcast', count: null },
   ]
 
@@ -392,8 +453,9 @@ function Dashboard({ api, token, onLogout }) {
         <nav style={{ padding: '10px 8px', flex: 1 }}>
           <div style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '4px 10px 8px' }}>Orders</div>
           {NAV.map(item => (
-            <div key={item.id} className={`nav-link ${view === item.id || (item.id === 'broadcast' && page === 'broadcast') ? 'active' : ''}`} onClick={() => {
+            <div key={item.id} className={`nav-link ${(view === item.id && page === 'dashboard') || (item.id === 'broadcast' && page === 'broadcast') || (item.id === 'users' && page === 'users') ? 'active' : ''}`} onClick={() => {
               if (item.id === 'broadcast') setPage('broadcast');
+              else if (item.id === 'users') setPage('users');
               else { setView(item.id); setPage('dashboard'); }
             }}>
               <span style={{ fontSize: 14 }}>{item.icon}</span>
@@ -425,7 +487,7 @@ function Dashboard({ api, token, onLogout }) {
             <div style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'sticky', top: 0, zIndex: 100 }}>
               <div>
                 <h1 style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
-                  {NAV.find(n => n.id === view)?.label || 'Orders'}
+                  {page === 'users' ? 'Registered Customers' : NAV.find(n => n.id === view)?.label || 'Orders'}
                 </h1>
                 <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>
                   {syncing
@@ -437,13 +499,13 @@ function Dashboard({ api, token, onLogout }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#9CA3AF' }}>🔍</span>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…"
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder={page === 'users' ? "Search customers…" : "Search orders…"}
                     style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px 8px 30px', fontSize: 13, color: '#111827', outline: 'none', width: 200 }}
                     onFocus={e => e.target.style.borderColor = '#059669'}
                     onBlur={e => e.target.style.borderColor = '#E5E7EB'} />
                   {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, lineHeight: 1 }}>×</button>}
                 </div>
-                <button className="btn" onClick={exportExcel} style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', color: '#059669', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>
+                <button className="btn" onClick={page === 'users' ? exportUsersExcel : exportExcel} style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', color: '#059669', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>
                   ⬇ Export
                 </button>
                 <button className="btn" onClick={() => load(true)} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', color: '#374151', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600 }}>
@@ -454,87 +516,158 @@ function Dashboard({ api, token, onLogout }) {
 
             {/* Content */}
             <div style={{ padding: '20px 24px', flex: 1 }}>
-
-              {/* Stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 22 }}>
-                <StatCard icon="📋" label="Total Orders" value={stats.total || 0} iconBg="#EFF6FF" />
-                <StatCard icon="⏳" label="Pending" value={stats.pending || 0} sub={`${stats.todayOrders || 0} today`} iconBg="#FFFBEB" />
-                <StatCard icon="✅" label="Confirmed" value={stats.confirmed || 0} iconBg="#ECFDF5" />
-                <StatCard icon="📦" label="Delivered" value={stats.delivered || 0} iconBg="#EFF6FF" />
-                <StatCard icon="💰" label="Revenue" value={`₹${Number(stats.totalRevenue).toFixed(2) || 0}`} sub={`₹${todayRevenue} today`} iconBg="#F0FDF4" />
-                <StatCard icon="💳" label="COD / UPI" value={`${stats.codOrders || 0} / ${stats.upiOrders || 0}`} iconBg="#FAF5FF" />
-              </div>
-
-              {/* Table card */}
-              <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
-
-                {/* Table toolbar */}
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
-                    {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'order' : 'orders'}`}
-                    {search && !loading && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> matching "{search}"</span>}
+              {page === 'users' ? (
+                /* Users Table Card */
+                <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }} className="fade-in">
+                  <div style={{ padding: '14px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                      {loading ? 'Loading…' : `${filteredUsers.length} ${filteredUsers.length === 1 ? 'customer' : 'customers'}`}
+                      {search && !loading && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> matching "{search}"</span>}
+                    </div>
                   </div>
-                  {!loading && filtered.length > 0 && (
-                    <div style={{ fontSize: 13, color: '#6B7280' }}>
-                      Value: <strong style={{ color: '#059669' }}>
-                        ₹{filtered.filter(o => o.orderStatus !== 'cancelled').reduce((s, o) => s + (Number(o.total) || 0), 0).toLocaleString('en-IN')}
-                      </strong>
+
+                  {!loading && filteredUsers.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: USER_GRID, padding: '0 20px', height: 38, alignItems: 'center', gap: 10, background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                      {USER_COLS.map(c => <div key={c} style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.7px' }}>{c}</div>)}
                     </div>
                   )}
-                </div>
 
-                {/* Column headers */}
-                {!loading && filtered.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: GRID, padding: '0 20px', height: 38, alignItems: 'center', gap: 10, background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-                    {COLS.map(c => <div key={c} style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.7px' }}>{c}</div>)}
-                  </div>
-                )}
-
-                {/* Rows */}
-                {loading ? (
-                  <div>
-                    {Array.from({ length: 7 }).map((_, i) => (
-                      <div key={i} style={{
-                        height: 54, margin: '0', borderBottom: '1px solid #F3F4F6',
-                        background: 'linear-gradient(90deg, #f4f4f4 25%, #fafafa 50%, #f4f4f4 75%)',
-                        backgroundSize: '600px 100%',
-                        animation: `shimmer 1.3s infinite`,
-                        animationDelay: `${i * 0.06}s`,
-                      }} />
-                    ))}
-                  </div>
-                ) : filtered.length === 0 ? (
-                  <div style={{ padding: '70px 20px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 44, marginBottom: 12, opacity: 0.18 }}>📭</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 5 }}>No orders found</div>
-                    <div style={{ fontSize: 13, color: '#9CA3AF' }}>Try adjusting your filters or search</div>
-                  </div>
-                ) : (
-                  filtered.map((order, i) => {
-                    const items = parseItems(order.items)
-                    const summary = items.length ? items.slice(0, 2).map(it => it.name).join(', ') + (items.length > 2 ? ` +${items.length - 2} more` : '') : '—'
-                    return (
-                      <div key={order.orderId} className="row-hover" onClick={() => setSelected(order)} style={{
-                        display: 'grid', gridTemplateColumns: GRID, padding: '0 20px', height: 54,
-                        alignItems: 'center', gap: 10, borderBottom: i < filtered.length - 1 ? '1px solid #F3F4F6' : 'none',
-                        cursor: 'pointer', background: '#fff', transition: 'background 0.1s',
-                        opacity: order.orderStatus === 'cancelled' ? 0.55 : 1,
+                  {loading ? (
+                    <div>
+                      {Array.from({ length: 7 }).map((_, i) => (
+                        <div key={i} style={{
+                          height: 54, margin: '0', borderBottom: '1px solid #F3F4F6',
+                          background: 'linear-gradient(90deg, #f4f4f4 25%, #fafafa 50%, #f4f4f4 75%)',
+                          backgroundSize: '600px 100%',
+                          animation: `shimmer 1.3s infinite`,
+                          animationDelay: `${i * 0.06}s`,
+                        }} />
+                      ))}
+                    </div>
+                  ) : filteredUsers.length === 0 ? (
+                    <div style={{ padding: '70px 20px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 44, marginBottom: 12, opacity: 0.18 }}>👥</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 5 }}>No customers found</div>
+                      <div style={{ fontSize: 13, color: '#9CA3AF' }}>Try adjusting your search criteria</div>
+                    </div>
+                  ) : (
+                    filteredUsers.map((u, i) => (
+                      <div key={u.phone} className="row-hover" style={{
+                        display: 'grid', gridTemplateColumns: USER_GRID, padding: '0 20px', height: 54,
+                        alignItems: 'center', gap: 10, borderBottom: i < filteredUsers.length - 1 ? '1px solid #F3F4F6' : 'none',
+                        background: '#fff', transition: 'background 0.1s'
                       }}>
-                        <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 11, fontWeight: 500, color: '#374151' }}>{order.orderId}</div>
                         <div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{order.customerPhone}</div>
-                          {order.customerName && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{order.customerName}</div>}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{u.phone}</div>
+                          <div style={{ marginTop: 2 }}>
+                            <a href={`https://wa.me/${u.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: '#059669', textDecoration: 'none', background: '#ECFDF5', padding: '2px 8px', borderRadius: 99 }}>
+                              💬 Chat
+                            </a>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</div>
-                        <div style={{ fontSize: 12, color: '#6B7280' }}>{fmtShort(order.createdAt)}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>₹{order.total}</div>
-                        <PayBadge method={order.paymentMethod} />
-                        <Badge status={order.orderStatus} />
+                        <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{u.name || '—'}</div>
+                        <div style={{ fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={u.address}>
+                          {u.address ? `📍 ${u.address}` : '—'}
+                        </div>
+                        <div>
+                          <CustTypeBadge type={u.customerType} />
+                        </div>
+                        <div>
+                          <LangBadge lang={u.lang} />
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6B7280' }}>
+                          {fmtShort(u.createdAt)}
+                        </div>
                       </div>
-                    )
-                  })
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                /* Orders View */
+                <>
+                  {/* Stats */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 22 }}>
+                    <StatCard icon="📋" label="Total Orders" value={stats.total || 0} iconBg="#EFF6FF" />
+                    <StatCard icon="⏳" label="Pending" value={stats.pending || 0} sub={`${stats.todayOrders || 0} today`} iconBg="#FFFBEB" />
+                    <StatCard icon="✅" label="Confirmed" value={stats.confirmed || 0} iconBg="#ECFDF5" />
+                    <StatCard icon="📦" label="Delivered" value={stats.delivered || 0} iconBg="#EFF6FF" />
+                    <StatCard icon="💰" label="Revenue" value={`₹${Number(stats.totalRevenue).toFixed(2) || 0}`} sub={`₹${todayRevenue} today`} iconBg="#F0FDF4" />
+                    <StatCard icon="💳" label="COD / UPI" value={`${stats.codOrders || 0} / ${stats.upiOrders || 0}`} iconBg="#FAF5FF" />
+                  </div>
+
+                  {/* Table card */}
+                  <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
+
+                    {/* Table toolbar */}
+                    <div style={{ padding: '14px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                        {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'order' : 'orders'}`}
+                        {search && !loading && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> matching "{search}"</span>}
+                      </div>
+                      {!loading && filtered.length > 0 && (
+                        <div style={{ fontSize: 13, color: '#6B7280' }}>
+                          Value: <strong style={{ color: '#059669' }}>
+                            ₹{filtered.filter(o => o.orderStatus !== 'cancelled').reduce((s, o) => s + (Number(o.total) || 0), 0).toLocaleString('en-IN')}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Column headers */}
+                    {!loading && filtered.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: GRID, padding: '0 20px', height: 38, alignItems: 'center', gap: 10, background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                        {COLS.map(c => <div key={c} style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.7px' }}>{c}</div>)}
+                      </div>
+                    )}
+
+                    {/* Rows */}
+                    {loading ? (
+                      <div>
+                        {Array.from({ length: 7 }).map((_, i) => (
+                          <div key={i} style={{
+                            height: 54, margin: '0', borderBottom: '1px solid #F3F4F6',
+                            background: 'linear-gradient(90deg, #f4f4f4 25%, #fafafa 50%, #f4f4f4 75%)',
+                            backgroundSize: '600px 100%',
+                            animation: `shimmer 1.3s infinite`,
+                            animationDelay: `${i * 0.06}s`,
+                          }} />
+                        ))}
+                      </div>
+                    ) : filtered.length === 0 ? (
+                      <div style={{ padding: '70px 20px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 44, marginBottom: 12, opacity: 0.18 }}>📭</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 5 }}>No orders found</div>
+                        <div style={{ fontSize: 13, color: '#9CA3AF' }}>Try adjusting your filters or search</div>
+                      </div>
+                    ) : (
+                      filtered.map((order, i) => {
+                        const items = parseItems(order.items)
+                        const summary = items.length ? items.slice(0, 2).map(it => it.name).join(', ') + (items.length > 2 ? ` +${items.length - 2} more` : '') : '—'
+                        return (
+                          <div key={order.orderId} className="row-hover" onClick={() => setSelected(order)} style={{
+                            display: 'grid', gridTemplateColumns: GRID, padding: '0 20px', height: 54,
+                            alignItems: 'center', gap: 10, borderBottom: i < filtered.length - 1 ? '1px solid #F3F4F6' : 'none',
+                            cursor: 'pointer', background: '#fff', transition: 'background 0.1s',
+                            opacity: order.orderStatus === 'cancelled' ? 0.55 : 1,
+                          }}>
+                            <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 11, fontWeight: 500, color: '#374151' }}>{order.orderId}</div>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{order.customerPhone}</div>
+                              {order.customerName && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{order.customerName}</div>}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</div>
+                            <div style={{ fontSize: 12, color: '#6B7280' }}>{fmtShort(order.createdAt)}</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>₹{order.total}</div>
+                            <PayBadge method={order.paymentMethod} />
+                            <Badge status={order.orderStatus} />
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
