@@ -950,19 +950,31 @@ function CustomerDrawer({ customer, orders, onClose }) {
 }
 
 function Login({ onLogin }) {
+  const [apiInput, setApiInput] = useState(() => {
+    try {
+      return localStorage.getItem('pb_api') || API_URL;
+    } catch {
+      return API_URL;
+    }
+  })
   const [pass, setPass] = useState(() => { try { return localStorage.getItem('pb_token') || '' } catch { return '' } })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   const go = async () => {
+    if (!apiInput.trim()) { setErr('Enter server URL'); return }
     if (!pass.trim()) { setErr('Enter your password'); return }
     setBusy(true); setErr('')
     try {
-      const r = await fetch(`${API_URL}/admin/stats`, { headers: { Authorization: `Bearer ${pass}` } })
+      const cleanApi = apiInput.trim().replace(/\/$/, "");
+      const r = await fetch(`${cleanApi}/admin/stats`, { headers: { Authorization: `Bearer ${pass}` } })
       if (!r.ok) { setErr('Wrong password'); setBusy(false); return }
-      try { localStorage.setItem('pb_token', pass) } catch { }
-      onLogin(API_URL, pass)
-    } catch { setErr('Cannot connect to server') }
+      try {
+        localStorage.setItem('pb_token', pass)
+        localStorage.setItem('pb_api', cleanApi)
+      } catch { }
+      onLogin(cleanApi, pass)
+    } catch { setErr('Cannot connect to server. Check server URL / status.') }
     setBusy(false)
   }
 
@@ -970,17 +982,28 @@ function Login({ onLogin }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F4FAF6', padding: 24 }}>
       <style>{STYLES}</style>
       <div className="fade-in" style={{ background: '#fff', border: '1px solid #E6F4EA', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380, boxShadow: '0 8px 32px rgba(4,120,87,0.06)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <div style={{ width: 42, height: 42, borderRadius: 10, background: '#E6F4EA', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🌾</div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Phasal Bazar</div>
             <div style={{ fontSize: 12, color: '#9CA3AF' }}>Admin Dashboard</div>
           </div>
         </div>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Password</label>
-        <input type="password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="Enter admin password"
-          style={{ width: '100%', border: `1.5px solid ${err ? '#FCA5A5' : '#E5E7EB'}`, borderRadius: 8, padding: '10px 12px', fontSize: 14, color: '#111827', outline: 'none', background: '#fff', marginBottom: 8 }} />
-        {err && <div style={{ fontSize: 12, color: '#DC2626', marginBottom: 10 }}>⚠️ {err}</div>}
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>API Server URL</label>
+          <input type="text" value={apiInput} onChange={e => setApiInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="e.g. http://localhost:3000"
+            style={{ width: '100%', border: '1.5px solid #E5E7EB', borderRadius: 8, padding: '10px 12px', fontSize: 14, color: '#111827', outline: 'none', background: '#fff' }} />
+          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>For local testing: http://localhost:3000</div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Password</label>
+          <input type="password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} placeholder="Enter admin password"
+            style={{ width: '100%', border: `1.5px solid ${err ? '#FCA5A5' : '#E5E7EB'}`, borderRadius: 8, padding: '10px 12px', fontSize: 14, color: '#111827', outline: 'none', background: '#fff' }} />
+        </div>
+
+        {err && <div style={{ fontSize: 12, color: '#DC2626', marginBottom: 12 }}>⚠️ {err}</div>}
         <button className="btn" onClick={go} disabled={busy} style={{ width: '100%', background: '#059669', color: '#fff', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(5,150,105,0.25)', opacity: busy ? 0.7 : 1 }}>
           {busy ? 'Signing in…' : 'Sign In'}
         </button>
@@ -1489,7 +1512,13 @@ function Dashboard({ api, token, onLogout }) {
 
 export default function App() {
   const [auth, setAuth] = useState(() => {
-    try { const t = localStorage.getItem('pb_token'); return t ? { api: API_URL, token: t } : null } catch { return null }
+    try {
+      const t = localStorage.getItem('pb_token');
+      const a = localStorage.getItem('pb_api') || API_URL;
+      return t ? { api: a, token: t } : null;
+    } catch {
+      return null;
+    }
   })
   if (!auth) return <Login onLogin={(api, token) => setAuth({ api, token })} />
   return <Dashboard api={auth.api} token={auth.token} onLogout={() => { try { localStorage.removeItem('pb_token') } catch { }; setAuth(null) }} />
