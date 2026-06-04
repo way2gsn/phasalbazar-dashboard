@@ -1007,6 +1007,7 @@ function Dashboard({ api, token, onLogout }) {
   const [syncTime, setSyncTime] = useState('')
   const [toasts, setToasts] = useState([])
   const prevIds = useRef(new Set())
+  const fileInputRef = useRef(null)
 
   const addToast = useCallback((msg, type = 'success') => {
     setToasts(t => [...t, { id: Date.now() + Math.random(), msg, type }])
@@ -1096,6 +1097,72 @@ function Dashboard({ api, token, onLogout }) {
     XLSX.writeFile(wb, `phasal-bazar-customers-${new Date().toISOString().split('T')[0]}.xlsx`)
     addToast(`Exported ${rows.length} customers`)
   }
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        if (rows.length === 0) {
+          addToast('File is empty', 'error');
+          return;
+        }
+
+        const importedUsers = rows.map(row => {
+          const phoneKey = Object.keys(row).find(k => /phone|number|contact|mobile/i.test(k));
+          const nameKey = Object.keys(row).find(k => /name/i.test(k));
+          const addressKey = Object.keys(row).find(k => /address|location/i.test(k));
+          const typeKey = Object.keys(row).find(k => /type|role/i.test(k));
+          const langKey = Object.keys(row).find(k => /lang|language/i.test(k));
+
+          const rawPhone = phoneKey ? String(row[phoneKey]).trim() : '';
+          const cleanedPhone = rawPhone.replace(/\D/g, '');
+          
+          return {
+            phone: cleanedPhone,
+            name: nameKey ? String(row[nameKey] || '').trim() : '',
+            address: addressKey ? String(row[addressKey] || '').trim() : '',
+            customerType: typeKey ? String(row[typeKey] || 'retail').trim().toLowerCase() : 'retail',
+            lang: langKey ? String(row[langKey] || 'en').trim().toLowerCase() : 'en',
+          };
+        }).filter(u => u.phone.length >= 10);
+
+        if (importedUsers.length === 0) {
+          addToast('No valid customer records found. Ensure columns contain "phone" or "number".', 'error');
+          return;
+        }
+
+        const res = await fetch(`${api}/admin/users/import`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ users: importedUsers })
+        });
+        
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Import failed');
+
+        addToast(`Successfully imported ${json.count} customers!`);
+        load(true);
+      } catch (err) {
+        addToast(err.message || 'Failed to read/import file', 'error');
+      } finally {
+        e.target.value = '';
+      }
+    };
+
+    reader.readAsBinaryString(file);
+  };
 
   const filteredOrders = orders
     .filter(o => ordersStatusFilter === 'all' || o.orderStatus === ordersStatusFilter)
@@ -1232,6 +1299,12 @@ function Dashboard({ api, token, onLogout }) {
                       onBlur={e => e.target.style.borderColor = '#E5E7EB'} />
                     {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, lineHeight: 1 }}>×</button>}
                   </div>
+                  {activeTab === 'users' && (
+                    <button className="btn" onClick={() => fileInputRef.current?.click()} style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      ⬆ Import
+                      <input type="file" ref={fileInputRef} accept=".csv,.xlsx,.xls" onChange={handleImportFile} style={{ display: 'none' }} />
+                    </button>
+                  )}
                   {(activeTab === 'orders' || activeTab === 'users') && (
                     <button className="btn" onClick={activeTab === 'users' ? exportUsersExcel : exportExcel} style={{ background: '#E6F4EA', border: '1px solid #A7F3D0', color: '#059669', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>
                       ⬇ Export
