@@ -29,132 +29,49 @@ const VARS = [
 /* ─── Preset Templates ──────────────────────────────────────────────────── */
 const PRESETS = [
   {
-    id: 'order_confirm',
-    category: 'Order Update',
-    categoryColor: '#065F46',
-    categoryBg: '#D1FAE5',
-    name: 'Order Confirmed',
-    icon: '✅',
-    body: `नमस्ते {{customer_name}} जी! 🌾
-
-आपका ऑर्डर *{{order_id}}* confirm हो गया है।
-
-📦 *Items:* {{items}}
-💰 *Total:* {{order_total}}
-🚚 *Delivery:* {{delivery_date}}
-
-धन्यवाद *{{shop_name}}* चुनने के लिए! 🙏
-कोई सवाल हो तो हमें WhatsApp करें।`,
-  },
-  {
-    id: 'order_delivered',
-    category: 'Order Update',
-    categoryColor: '#065F46',
-    categoryBg: '#D1FAE5',
-    name: 'Order Delivered',
-    icon: '🚀',
-    body: `नमस्ते {{customer_name}} जी! 🎉
-
-आपका ऑर्डर *{{order_id}}* deliver हो गया है।
-
-हमें उम्मीद है आपको सब ताज़ा मिला होगा! 🌿
-
-अगर कोई समस्या हो तो हमें बताएं।
-*{{shop_name}}* की तरफ से धन्यवाद! 🙏`,
-  },
-  {
-    id: 'promo_offer',
-    category: 'Promotional',
-    categoryColor: '#92400E',
-    categoryBg: '#FEF3C7',
-    name: 'Special Offer',
-    icon: '🎁',
-    body: `🌾 *{{shop_name}}* की तरफ से खास ऑफर!
-
-नमस्ते {{customer_name}} जी,
-
-आज सिर्फ *{{offer}}* — सिर्फ आज के लिए! ⏰
-
-ताज़ी सब्ज़ियां, अच्छे दाम, सीधे आपके घर।
-
-अभी order करें 👇
-{{link}}
-
-*जल्दी करें, स्टॉक सीमित है!* 🔥`,
-  },
-  {
-    id: 'payment_reminder',
-    category: 'Reminder',
-    categoryColor: '#1E40AF',
-    categoryBg: '#DBEAFE',
-    name: 'Payment Reminder',
-    icon: '💳',
-    body: `नमस्ते {{customer_name}} जी,
-
-आपके ऑर्डर *{{order_id}}* का payment pending है।
-
-💰 *Amount:* {{order_total}}
-
-UPI या Cash on Delivery — जो आसान हो।
-कोई परेशानी हो तो बताएं! 🙏
-
-— *{{shop_name}}* Team`,
-  },
-  {
-    id: 'festive',
-    category: 'Promotional',
-    categoryColor: '#92400E',
-    categoryBg: '#FEF3C7',
-    name: 'Festive Greetings',
-    icon: '🪔',
-    body: `🪔 त्योहार की शुभकामनाएं, {{customer_name}} जी!
-
-इस खास मौके पर *{{shop_name}}* आपके लिए लाया है ताज़ी सब्ज़ियां और फल — बिल्कुल सही दाम पर।
-
-*{{offer}}* — सिर्फ त्योहार के दिनों के लिए! 🎉
-
-Order करें: {{link}}
-
-आपके और आपके परिवार को बहुत-बहुत शुभकामनाएं! 🌸`,
-  },
-  {
-    id: 'reorder_nudge',
-    category: 'Reminder',
-    categoryColor: '#1E40AF',
-    categoryBg: '#DBEAFE',
-    name: 'Re-order Reminder',
-    icon: '🔄',
-    body: `नमस्ते {{customer_name}} जी! 🌾
-
-क्या आपके घर की सब्ज़ियां खत्म होने वाली हैं?
-
-आपने पिछली बार लिया था: *{{items}}*
-
-अभी order करें और घर बैठे पाएं ताज़ा सामान!
-{{link}}
-
-*{{shop_name}}* — ताज़ा हर रोज़ 🌿`,
-  },
-  {
-    id: 'welcome',
+    id: 'phasal_bazar_shopping',
     category: 'Welcome',
     categoryColor: '#6D28D9',
     categoryBg: '#EDE9FE',
-    name: 'New Customer Welcome',
+    name: 'phasal_bazar_shopping',
     icon: '👋',
-    body: `नमस्ते {{customer_name}} जी! 👋🌾
-
-*{{shop_name}}* में आपका स्वागत है!
-
-हम लाते हैं आपके लिए:
-✅ ताज़ी सब्ज़ियां रोज़ाना
-✅ घर तक delivery
-✅ सही दाम, कोई छुपा charge नहीं
-
-अपना पहला order करने के लिए:
-{{link}}
-
-कोई सवाल? बस यहाँ message करें! 😊`,
+    body: 'Shop fresh farm products — Millets, Oils, Dals and more! Pure • Natural • Desi 🌾',
+  },
+  {
+    id: 'phasal_bazar_order_confirmed',
+    category: 'Order Update',
+    categoryColor: '#065F46',
+    categoryBg: '#D1FAE5',
+    name: 'phasal_bazar_order_confirmed',
+    icon: '✅',
+    body: 'Hello {{customer_name}}! Your order {{order_id}} has been confirmed. Total: ₹{{order_total}}. We will deliver it by {{delivery_date}}. Thank you for shopping with Phasal Bazar! 🌾',
+  },
+  {
+    id: 'phasal_bazar_order_delivered',
+    category: 'Order Update',
+    categoryColor: '#065F46',
+    categoryBg: '#D1FAE5',
+    name: 'phasal_bazar_order_delivered',
+    icon: '🚀',
+    body: 'Great news {{customer_name}}! Your order {{order_id}} has been delivered. We hope you love your fresh products! 🚚🌾',
+  },
+  {
+    id: 'phasal_bazar_order_cancelled',
+    category: 'Order Update',
+    categoryColor: '#DC2626',
+    categoryBg: '#FEE2E2',
+    name: 'phasal_bazar_order_cancelled',
+    icon: '❌',
+    body: 'Hello {{customer_name}}, your order {{order_id}} has been cancelled. If this was a mistake, please start shopping again. ❌',
+  },
+  {
+    id: 'phasal_bazar_payment_request',
+    category: 'Payment',
+    categoryColor: '#1E40AF',
+    categoryBg: '#DBEAFE',
+    name: 'phasal_bazar_payment_request',
+    icon: '💳',
+    body: 'Hello {{customer_name}}! To complete your order {{order_id}} for ₹{{order_total}}, please click here to pay: {{link}}. Thank you! 💳',
   },
   {
     id: 'custom',

@@ -125,7 +125,7 @@ function TemplateDrawer({ onSelect, onClose }) {
             width: 32, height: 32, fontSize: 18, color: '#64748B',
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
-        <BroadcastTemplates onSelect={tpl => { onSelect(tpl.body); onClose() }} />
+        <BroadcastTemplates onSelect={tpl => { onSelect(tpl); onClose() }} />
       </div>
     </>
   )
@@ -134,7 +134,18 @@ function TemplateDrawer({ onSelect, onClose }) {
 /* ─── Main Broadcast Component ──────────────────────────────────────────── */
 export default function Broadcast({ api, token, onBack }) {
   const [message,       setMessage]       = useState('')
+  const [useTemplate,   setUseTemplate]   = useState(false)
+  const [templateName,  setTemplateName]  = useState('phasal_bazar_shopping')
   const [busy,          setBusy]          = useState(false)
+
+  const toggleUseTemplate = (checked) => {
+    setUseTemplate(checked)
+    if (checked) {
+      setMessage('Shop fresh farm products — Millets, Oils, Dals and more! Pure • Natural • Desi 🌾')
+    } else {
+      setMessage('')
+    }
+  }
   const [result,        setResult]        = useState(null)
   const [error,         setError]         = useState('')
   const [users,         setUsers]         = useState([])
@@ -269,9 +280,7 @@ export default function Broadcast({ api, token, onBack }) {
       const res = await fetch(`${api}/admin/broadcast`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        // server: const { phones, template, data } = req.body
-        // fillTemplate(template, data[phone]) replaces {{vars}} per message
-        body: JSON.stringify({ template: message, phones, data }),
+        body: JSON.stringify({ template: message, phones, data, useTemplate, templateName }),
       })
 
       const json = await res.json()
@@ -285,6 +294,7 @@ export default function Broadcast({ api, token, onBack }) {
           : `Broadcast sent to ${sentCount} customer${sentCount !== 1 ? 's' : ''}!`
       )
       setMessage('')
+      setUseTemplate(false)
       setVarValues({})
     } catch (e) {
       setError(e.message || 'Failed to send broadcast.')
@@ -312,8 +322,14 @@ export default function Broadcast({ api, token, onBack }) {
 
       {showTemplates && (
         <TemplateDrawer
-          onSelect={body => {
-            setMessage(body)
+          onSelect={tpl => {
+            setMessage(tpl.body)
+            if (tpl.id !== 'custom') {
+              setUseTemplate(true)
+              setTemplateName(tpl.name)
+            } else {
+              setUseTemplate(false)
+            }
             // Pre-seed known auto-defaults immediately (no useEffect timing issue)
             setVarValues(v => ({ shop_name: 'Phasal Bazar', ...v }))
           }}
@@ -378,17 +394,40 @@ export default function Broadcast({ api, token, onBack }) {
               </div>
             </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 16, padding: '12px 14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13, userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={useTemplate}
+                  onChange={e => toggleUseTemplate(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: '#16A34A', cursor: 'pointer' }}
+                />
+                Send as WhatsApp Approved Template
+              </label>
+              {useTemplate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
+                  <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>Template Name:</span>
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={e => setTemplateName(e.target.value)}
+                    style={{ flex: 1, border: '1.5px solid #E2E8F0', borderRadius: 6, padding: '4px 8px', fontSize: 13, outline: 'none', background: '#fff' }}
+                  />
+                </div>
+              )}
+            </div>
+
             <textarea
               ref={textRef}
               value={message}
               onChange={e => { setMessage(e.target.value); setError(''); setResult(null) }}
               placeholder={"Type your broadcast message here…\n\nTip: Use *asterisks* for bold text in WhatsApp.\nExample: *Phasal Bazar* — ताज़ा सब्ज़ियां!"}
               rows={12}
-              disabled={busy}
+              disabled={busy || useTemplate}
               style={{
                 width: '100%', border: '1.5px solid #E2E8F0', borderRadius: 10,
                 padding: '13px 15px', color: '#0F172A', outline: 'none',
-                resize: 'vertical', lineHeight: 1.8, fontSize: 14, background: '#F8FAFC',
+                resize: 'vertical', lineHeight: 1.8, fontSize: 14, background: useTemplate ? '#F1F5F9' : '#F8FAFC',
                 transition: 'border-color .15s', minHeight: 220,
               }}
               onFocus={e => e.target.style.borderColor = '#16A34A'}
