@@ -38,6 +38,15 @@ const PRESETS = [
     body: 'Shop fresh farm products — Millets, Oils, Dals and more! Pure • Natural • Desi 🌾',
   },
   {
+    id: 'phasal_bazar_welcome',
+    category: 'Welcome',
+    categoryColor: '#6D28D9',
+    categoryBg: '#EDE9FE',
+    name: 'phasal_bazar_welcome',
+    icon: '🌾',
+    body: 'Hi {{customer_name}}! 🌾\n\nWe are Phasal Bazar, bringing you 100% natural, pure, and farm-fresh products directly from local farms to your doorstep.\n\n🌐 Explore our D2C store: https://phasalbazar.com\n\nTap "View Catalog" below to browse our fresh products directly here on WhatsApp, or reply to this message to chat with us! 💚',
+  },
+  {
     id: 'phasal_bazar_order_confirmed',
     category: 'Order Update',
     categoryColor: '#065F46',
