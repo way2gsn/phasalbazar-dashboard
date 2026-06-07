@@ -178,20 +178,40 @@ export default function Broadcast({ api, token, onBack }) {
   const effectiveVars  = { ...AUTO_DEFAULTS, ...varValues }
   const missingVars    = detectedVars.filter(k => !effectiveVars[k]?.trim())
 
-  /* fetch unique customers from orders */
+  /* fetch unique customers from orders and users list */
   useEffect(() => {
     const fetchUsers = async () => {
       setLoadingUsers(true)
       try {
-        const res = await fetch(`${api}/admin/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const orders = await res.json()
+        const [ordersRes, usersRes] = await Promise.all([
+          fetch(`${api}/admin/orders`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${api}/admin/users`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => null)
+        ])
+        
+        const orders = await ordersRes.json()
+        const usersList = usersRes ? await usersRes.json() : []
         const map = new Map()
-        orders.forEach(o => {
-          if (o.customerPhone)
-            map.set(o.customerPhone, { name: o.customerName || '', phone: o.customerPhone })
-        })
+
+        if (Array.isArray(usersList)) {
+          usersList.forEach(u => {
+            if (u.phone) {
+              map.set(u.phone, { name: u.name || '', phone: u.phone, updatedAt: u.updatedAt || u.updated_at || null })
+            }
+          })
+        }
+
+        if (Array.isArray(orders)) {
+          orders.forEach(o => {
+            if (o.customerPhone && !map.has(o.customerPhone)) {
+              map.set(o.customerPhone, { name: o.customerName || '', phone: o.customerPhone, updatedAt: null })
+            }
+          })
+        }
+
         setUsers(Array.from(map.values()))
       } catch {
         setUsers([])
@@ -221,6 +241,31 @@ export default function Broadcast({ api, token, onBack }) {
     ...users,
     ...manualPhones.filter(m => !users.some(u => u.phone === m.phone)),
   ]
+
+  const get24hWindowStatus = (user) => {
+    if (!user || !user.updatedAt) return { status: 'expired', label: 'Expired (24h Window)', color: '#DC2626', bg: '#FEE2E2' };
+    const lastInteraction = new Date(user.updatedAt);
+    const diffMs = Date.now() - lastInteraction.getTime();
+    const isWithin24h = diffMs < 24 * 60 * 60 * 1000;
+    if (isWithin24h) {
+      const remainingMs = 24 * 60 * 60 * 1000 - diffMs;
+      const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+      const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      let timeStr = '';
+      if (hours > 0) timeStr += `${hours}h `;
+      timeStr += `${minutes}m left`;
+      return { status: 'active', label: `Active (${timeStr})`, color: '#16A34A', bg: '#DCFCE7' };
+    }
+    return { status: 'expired', label: 'Expired (24h Window)', color: '#DC2626', bg: '#FEE2E2' };
+  }
+
+  // Check if any selected recipient has an expired 24h window
+  const selectedUsers = selectAll ? allUsers : allUsers.filter(u => selected.includes(u.phone))
+  const hasExpiredSelection = selectedUsers.some(u => {
+    if (u.manual) return true; // manual numbers don't have active database interaction logs
+    const win = get24hWindowStatus(u);
+    return win.status === 'expired';
+  })
 
   // Validate and add a phone number manually
   const addPhone = () => {
@@ -549,6 +594,22 @@ export default function Broadcast({ api, token, onBack }) {
           )}
 
           {/* Status banners */}
+          {hasExpiredSelection && !useTemplate && recipientCount > 0 && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10,
+              padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start',
+              color: '#B45309', fontSize: 13, fontWeight: 500, lineHeight: 1.5, animation: 'fadeIn .25s ease', marginBottom: 12 }}>
+              <span style={{ fontSize: 16 }}>⚠️</span>
+              <div>
+                <strong style={{ display: 'block', marginBottom: 2, color: '#92400E' }}>24-Hour Window Warning</strong>
+                You have selected recipient(s) whose 24-hour customer window is closed. 
+                WhatsApp will block delivery of plain text messages to these users.
+                <div style={{ marginTop: 6, fontWeight: 600, color: '#92400E' }}>
+                  💡 To fix this: Check <strong>"Send as WhatsApp Approved Template"</strong> above.
+                </div>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
               padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
@@ -717,6 +778,17 @@ export default function Broadcast({ api, token, onBack }) {
                             ×
                           </button>
                         )}
+                        
+                        {!u.manual && (() => {
+                          const win = get24hWindowStatus(u);
+                          return (
+                            <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 99, padding: '2px 7px',
+                              background: win.bg, color: win.color }}>
+                              {win.label}
+                            </span>
+                          );
+                        })()}
+
                         <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 99, padding: '2px 7px',
                           background: u.manual ? '#EDE9FE' : '#D1FAE5',
                           color:      u.manual ? '#6D28D9' : '#065F46' }}>
