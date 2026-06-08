@@ -18,7 +18,7 @@ input::placeholder, textarea::placeholder { color:#94A3B8; }
 `
 
 /* ─── WhatsApp phone preview ────────────────────────────────────────────── */
-function PhonePreview({ text }) {
+function PhonePreview({ text, headerImage }) {
   const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const html = text
     ? text.replace(/\*(.*?)\*/g, '<b>$1</b>').replace(/\n/g, '<br/>')
@@ -51,9 +51,13 @@ function PhonePreview({ text }) {
                 background: '#fff', borderRadius: '0 8px 8px 8px',
                 padding: '7px 9px', fontSize: 11, lineHeight: 1.6, color: '#111',
                 boxShadow: '0 1px 2px rgba(0,0,0,.1)', borderLeft: '3px solid #25D366',
-              }}
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
+                overflow: 'hidden'
+              }}>
+                {headerImage && (
+                  <img src={headerImage} alt="Header Preview" style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: '4px 4px 0 0', marginBottom: 6 }} />
+                )}
+                <div dangerouslySetInnerHTML={{ __html: html }} />
+              </div>
               <div style={{ fontSize: 9, color: '#999', textAlign: 'right', marginTop: 2 }}>
                 {now} ✓✓
               </div>
@@ -107,7 +111,7 @@ function Btn({ children, onClick, disabled, variant = 'outline', style: extra = 
 }
 
 /* ─── Template Drawer ───────────────────────────────────────────────────── */
-function TemplateDrawer({ onSelect, onClose }) {
+function TemplateDrawer({ api, token, onSelect, onClose }) {
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.3)',
@@ -125,7 +129,7 @@ function TemplateDrawer({ onSelect, onClose }) {
             width: 32, height: 32, fontSize: 18, color: '#64748B',
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
-        <BroadcastTemplates onSelect={tpl => { onSelect(tpl); onClose() }} />
+        <BroadcastTemplates api={api} token={token} onSelect={tpl => { onSelect(tpl); onClose() }} />
       </div>
     </>
   )
@@ -148,6 +152,11 @@ export default function Broadcast({ api, token, onBack }) {
   }
   const [result,        setResult]        = useState(null)
   const [error,         setError]         = useState('')
+  const [broadcastErrors, setBroadcastErrors] = useState([])
+  const [showGuide,       setShowGuide]       = useState(false)
+  const [templateHasImageHeader, setTemplateHasImageHeader] = useState(false)
+  const [customHeaderImage, setCustomHeaderImage] = useState('')
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [users,         setUsers]         = useState([])
   const [loadingUsers,  setLoadingUsers]  = useState(true)
   const [selected,      setSelected]      = useState([])
@@ -243,6 +252,19 @@ export default function Broadcast({ api, token, onBack }) {
   ]
 
   const get24hWindowStatus = (user) => {
+    if (user && user.coolOffUntil) {
+      const coolOffTime = new Date(user.coolOffUntil).getTime();
+      if (coolOffTime > Date.now()) {
+        const remainingMs = coolOffTime - Date.now();
+        const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+        const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+        let timeStr = '';
+        if (hours > 0) timeStr += `${hours}h `;
+        timeStr += `${minutes}m left`;
+        return { status: 'cooloff', label: `Cool-off (${timeStr})`, color: '#D97706', bg: '#FEF3C7' };
+      }
+    }
+
     if (!user || !user.updatedAt) return { status: 'expired', label: 'Expired (24h Window)', color: '#DC2626', bg: '#FEE2E2' };
     const lastInteraction = new Date(user.updatedAt);
     const diffMs = Date.now() - lastInteraction.getTime();
@@ -297,8 +319,51 @@ export default function Broadcast({ api, token, onBack }) {
     setSelected(sel => sel.filter(p => p !== phone))
   }
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Meta API limits header images to 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      setError(`Image size (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds WhatsApp's 5 MB limit. Please select a smaller or compressed image.`);
+      return;
+    }
+
+    setUploadingImage(true)
+    setError('')
+    try {
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        try {
+          const base64Data = reader.result
+          const res = await fetch(`${api}/admin/upload-image`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ base64: base64Data })
+          })
+          const data = await res.json()
+          if (res.ok && data.url) {
+            setCustomHeaderImage(data.url)
+          } else {
+            setError(data.error || 'Image upload failed')
+          }
+        } catch (err) {
+          setError(err.message || 'Image upload failed')
+        }
+        setUploadingImage(false)
+      }
+      reader.readAsDataURL(file)
+    } catch (err) {
+      setError(err.message || 'Failed to read image file')
+      setUploadingImage(false)
+    }
+  }
+
   const sendBroadcast = async () => {
-    setError(''); setResult(null)
+    setError(''); setResult(null); setBroadcastErrors([])
     if (!message.trim())                     { setError('Message cannot be empty.');       return }
     if (!selectAll && selected.length === 0) { setError('Select at least one recipient.'); return }
     if (missingVars.length > 0)              { setError(`Fill in values for: ${missingVars.join(', ')}`); return }
@@ -325,7 +390,7 @@ export default function Broadcast({ api, token, onBack }) {
       const res = await fetch(`${api}/admin/broadcast`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: message, phones, data, useTemplate, templateName }),
+        body: JSON.stringify({ template: message, phones, data, useTemplate, templateName, headerImage: customHeaderImage || undefined }),
       })
 
       const json = await res.json()
@@ -333,14 +398,21 @@ export default function Broadcast({ api, token, onBack }) {
 
       const sentCount = typeof json.sent   === 'number' ? json.sent   : phones.length
       const failCount = typeof json.failed === 'number' ? json.failed : 0
+      
+      if (Array.isArray(json.errors) && json.errors.length > 0) {
+        setBroadcastErrors(json.errors)
+      }
+
       setResult(
         failCount > 0
-          ? `Sent to ${sentCount} customers. ${failCount} failed.`
-          : `Broadcast sent to ${sentCount} customer${sentCount !== 1 ? 's' : ''}!`
+          ? `Broadcast queue request completed: ${sentCount} succeeded, ${failCount} failed.`
+          : `Broadcast request accepted for ${sentCount} customer${sentCount !== 1 ? 's' : ''}! Check 'Live Support' chat log for real-time delivery status updates.`
       )
       setMessage('')
       setUseTemplate(false)
       setVarValues({})
+      setCustomHeaderImage('')
+      setTemplateHasImageHeader(false)
     } catch (e) {
       setError(e.message || 'Failed to send broadcast.')
     }
@@ -367,6 +439,8 @@ export default function Broadcast({ api, token, onBack }) {
 
       {showTemplates && (
         <TemplateDrawer
+          api={api}
+          token={token}
           onSelect={tpl => {
             setMessage(tpl.body)
             if (tpl.id !== 'custom') {
@@ -375,6 +449,8 @@ export default function Broadcast({ api, token, onBack }) {
             } else {
               setUseTemplate(false)
             }
+            setTemplateHasImageHeader(tpl.hasImageHeader || false)
+            setCustomHeaderImage('')
             // Pre-seed known auto-defaults immediately (no useEffect timing issue)
             setVarValues(v => ({ shop_name: 'Phasal Bazar', ...v }))
           }}
@@ -426,25 +502,91 @@ export default function Broadcast({ api, token, onBack }) {
         {/* ── LEFT ────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* WhatsApp API Policy Note */}
+          {/* WhatsApp API Policy & Limits Guide */}
           <div style={{
-            background: '#EFF6FF',
-            border: '1px solid #BFDBFE',
-            borderRadius: 12,
-            padding: '12px 16px',
-            display: 'flex',
-            gap: 12,
-            alignItems: 'flex-start',
-            boxShadow: '0 1px 2px rgba(30,58,138,0.02)',
-            animation: 'fadeIn .3s ease'
+            background: '#fff',
+            border: '1px solid #E2E8F0',
+            borderRadius: 14,
+            boxShadow: '0 1px 3px rgba(0,0,0,.04)',
+            overflow: 'hidden'
           }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>💡</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13, color: '#1E3A8A', marginBottom: 2 }}>WhatsApp Policy Notice</div>
-              <div style={{ fontSize: 12.5, color: '#1D4ED8', lineHeight: 1.5 }}>
-                To contact a customer who hasn't messaged you in the last 24 hours, you <strong>must</strong> send a Meta-approved template message. Once the customer replies, a 24-hour session window opens during which you can send regular custom messages.
+            <div 
+              onClick={() => setShowGuide(!showGuide)} 
+              style={{
+                padding: '14px 20px',
+                background: '#F8FAFC',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 16 }}>💡</span>
+                <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 13 }}>Meta WhatsApp Cloud API Guidelines & Limitations</span>
               </div>
+              <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                {showGuide ? 'Collapse ▴' : 'Expand Details ▾'}
+              </span>
             </div>
+
+            {showGuide && (
+              <div style={{ padding: '20px 24px', borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 18, background: '#fff', animation: 'fadeIn .25s ease' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+                  {/* Column 1: Window Rules */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: 12.5, color: '#1E3A8A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🕒 24-Hour Session Window
+                      </h4>
+                      <p style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.5 }}>
+                        Starts immediately when a customer sends a message to your business. During this window, you can reply with **free-form (regular) text messages** or flows.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: 12.5, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        📄 Approved Templates Requirement
+                      </h4>
+                      <p style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.5 }}>
+                        If the 24-hour window has expired (or the customer hasn't messaged you first), you **must** send a Meta-approved template message. Sending a plain text message will fail with error `131047`.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Template Types & Limitations */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: 12.5, color: '#B45309', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🛍️ Marketing vs. Utility Templates
+                      </h4>
+                      <p style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.5 }}>
+                        • **Marketing Templates:** Used for promotions, offers, or welcome greetings. Meta strictly caps marketing templates per recipient per day.
+                      </p>
+                      <p style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.5 }}>
+                        • **Utility Templates:** Used for transaction updates, orders, shipping notifications, and payment links. These have much higher delivery limits.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 style={{ fontWeight: 700, fontSize: 12.5, color: '#D97706', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ⏳ Cool-off Period (Error 131049)
+                      </h4>
+                      <p style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.5 }}>
+                        If a user receives too many marketing templates within a short period, Meta blocks further delivery to maintain healthy engagement, returning error `131049`. Pause templates to this number for **24 hours**.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sandbox Section */}
+                <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F0FDF4', borderRadius: 8, padding: '10px 14px', border: '1px solid #DCFCE7' }}>
+                  <span style={{ fontSize: 15 }}>🧪</span>
+                  <div style={{ fontSize: 12.5, color: '#166534', lineHeight: 1.5 }}>
+                    <strong>Sandbox Testing Rule:</strong> If you are testing with a WhatsApp Sandbox/Test Phone number, you **must** manually add the recipient's phone number to your **Sandbox Allowed list** inside developers.facebook.com under *WhatsApp / API Setup*, or else messages will fail silently.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Composer */}
@@ -476,12 +618,69 @@ export default function Broadcast({ api, token, onBack }) {
                   <input
                     type="text"
                     value={templateName}
-                    onChange={e => setTemplateName(e.target.value)}
+                    onChange={e => {
+                      const name = e.target.value;
+                      setTemplateName(name);
+                      if (name === 'phasal_bazar_shopping') {
+                        setTemplateHasImageHeader(true);
+                      }
+                    }}
                     style={{ flex: 1, border: '1.5px solid #E2E8F0', borderRadius: 6, padding: '4px 8px', fontSize: 13, outline: 'none', background: '#fff' }}
                   />
                 </div>
               )}
             </div>
+
+            {useTemplate && templateHasImageHeader && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0', marginBottom: 16 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.6px' }}>
+                  🖼️ Template Header Image (Required by Meta)
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Paste image URL (e.g. https://...) or upload below"
+                    value={customHeaderImage}
+                    onChange={e => setCustomHeaderImage(e.target.value)}
+                    style={{ flex: 1, border: '1.5px solid #E2E8F0', borderRadius: 8, padding: '8px 11px', fontSize: 13, outline: 'none', background: '#fff' }}
+                  />
+                  <label style={{
+                    background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 8,
+                    padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#374151',
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
+                    whiteSpace: 'nowrap'
+                  }}>
+                    📁 {uploadingImage ? 'Uploading...' : 'Upload Local Image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={uploadingImage}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
+                {customHeaderImage && (
+                  <div style={{ position: 'relative', width: 140, height: 80, border: '1px solid #E2E8F0', borderRadius: 6, overflow: 'hidden', marginTop: 6 }}>
+                    <img src={customHeaderImage} alt="Header Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button onClick={() => setCustomHeaderImage('')}
+                      style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(15,23,42,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                      ×
+                    </button>
+                  </div>
+                )}
+                {(api.includes('localhost') || api.includes('127.0.0.1')) && (
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, fontSize: 11.5, color: '#B45309', lineHeight: 1.45 }}>
+                    <strong>⚠️ Localhost Environment Warning:</strong> Meta's servers cannot download files hosted on `localhost` (private addresses).
+                    To test templates with image headers locally:
+                    <div style={{ marginLeft: 8, marginTop: 4 }}>
+                      • Paste a <strong>public image URL</strong> (e.g. from Imgur, Postimages, or a public CDN) into the input box above, or<br/>
+                      • Run <strong>ngrok</strong> (e.g. <code>ngrok http 3000</code>) to expose your local backend publicly, and use the ngrok domain as your API URL.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <textarea
               ref={textRef}
@@ -622,6 +821,22 @@ export default function Broadcast({ api, token, onBack }) {
               padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
               color: '#065F46', fontSize: 13, fontWeight: 600 }}>
               <span>✅</span> {result}
+            </div>
+          )}
+          {broadcastErrors.length > 0 && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
+              padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '.6px' }}>
+                ⚠️ Failed Send Attempts
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {broadcastErrors.map((err, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#7F1D1D' }}>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontWeight: 600 }}>{err.phone}:</span>
+                    <span>{err.error}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -828,7 +1043,10 @@ export default function Broadcast({ api, token, onBack }) {
           <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14,
             padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
             <SectionLabel>WhatsApp Preview</SectionLabel>
-            <PhonePreview text={message} />
+            <PhonePreview 
+              text={message} 
+              headerImage={useTemplate && templateHasImageHeader ? (customHeaderImage || (templateName === 'phasal_bazar_shopping' ? 'https://phasalbazar.com/cdn/shop/files/Workshops.png?v=1775062629&width=2000' : '')) : null} 
+            />
           </div>
 
           <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14,

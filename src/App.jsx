@@ -424,6 +424,7 @@ function ProductCatalogView({ api, token, products, categories, onLoad, addToast
   
   const [showSettings, setShowSettings] = useState(false);
   const [catalogIdInput, setCatalogIdInput] = useState(catalogConfig.catalogId || "");
+  const [wabaIdInput, setWabaIdInput] = useState(catalogConfig.wabaId || "");
   const [tokenInput, setTokenInput] = useState("");
   const [brandInput, setBrandInput] = useState(catalogConfig.brand || "Phasal Bazar");
   const [urlInput, setUrlInput] = useState(catalogConfig.websiteUrl || "https://wa.me/c/917771012123");
@@ -432,6 +433,7 @@ function ProductCatalogView({ api, token, products, categories, onLoad, addToast
 
   useEffect(() => {
     setCatalogIdInput(catalogConfig.catalogId || "");
+    setWabaIdInput(catalogConfig.wabaId || "");
     setBrandInput(catalogConfig.brand || "Phasal Bazar");
     setUrlInput(catalogConfig.websiteUrl || "https://wa.me/c/917771012123");
     setBroadcastImageInput(catalogConfig.broadcastImageUrl || "");
@@ -459,7 +461,7 @@ function ProductCatalogView({ api, token, products, categories, onLoad, addToast
   const handleSyncMeta = async () => {
     setSyncingMeta(true);
     try {
-      // Save config (including broadcast image URL) first
+      // Save config (including broadcast image URL and WABA ID) first
       await fetch(`${api}/admin/catalog/config`, {
         method: 'PUT',
         headers: {
@@ -468,6 +470,7 @@ function ProductCatalogView({ api, token, products, categories, onLoad, addToast
         },
         body: JSON.stringify({
           catalogId: catalogIdInput,
+          wabaId: wabaIdInput,
           brand: brandInput,
           websiteUrl: urlInput,
           broadcastImageUrl: broadcastImageInput
@@ -656,6 +659,11 @@ function ProductCatalogView({ api, token, products, categories, onLoad, addToast
                   style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13 }} />
               </div>
               <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4B5563', marginBottom: 4 }}>WhatsApp Business Account (WABA) ID</label>
+                <input value={wabaIdInput} onChange={e => setWabaIdInput(e.target.value)} placeholder="e.g. 109284058291048"
+                  style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13 }} />
+              </div>
+              <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4B5563', marginBottom: 4 }}>Meta Access Token (Optional)</label>
                 <input type="password" value={tokenInput} onChange={e => setTokenInput(e.target.value)} placeholder="Leave blank to use server token"
                   style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13 }} />
@@ -819,25 +827,54 @@ function LiveChatView({ api, token, customers, addToast }) {
                   No active session log. Messages sent or received will appear here.
                 </div>
               ) : (
-                messages.map((m, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', flexDirection: 'column',
-                    alignSelf: m.sender === 'user' ? 'flex-start' : 'flex-end',
-                    background: m.sender === 'user' ? '#F3F4F6' : m.sender === 'admin' ? '#D1FAE5' : '#E0F2FE',
-                    color: m.sender === 'user' ? '#1F2937' : m.sender === 'admin' ? '#065F46' : '#0369A1',
-                    borderRadius: 16, borderBottomLeftRadius: m.sender === 'user' ? 4 : 16,
-                    borderBottomRightRadius: m.sender !== 'user' ? 4 : 16,
-                    padding: '10px 14px', margin: '4px 0', maxWidth: '65%'
-                  }}>
-                    <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 3, fontWeight: 600, textTransform: 'capitalize' }}>
-                      {m.sender}
+                messages.map((m, idx) => {
+                  const isSystem = m.sender === 'system' || m.type === 'system_error';
+                  if (isSystem) {
+                    return (
+                      <div key={idx} style={{
+                        alignSelf: 'center',
+                        background: '#FFF1F2',
+                        color: '#991B1B',
+                        border: '1px solid #FECACA',
+                        borderRadius: 12,
+                        padding: '10px 16px',
+                        margin: '10px 0',
+                        fontSize: 12.5,
+                        maxWidth: '80%',
+                        textAlign: 'center',
+                        boxShadow: '0 1px 3px rgba(153,27,27,0.05)',
+                        animation: 'fadeIn 0.2s ease-in-out'
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <span>⚠️</span> SYSTEM NOTICE
+                        </div>
+                        <div style={{ lineHeight: 1.5 }}>{m.text}</div>
+                        <div style={{ fontSize: 9, opacity: 0.6, marginTop: 6 }}>
+                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={idx} style={{
+                      display: 'flex', flexDirection: 'column',
+                      alignSelf: m.sender === 'user' ? 'flex-start' : 'flex-end',
+                      background: m.sender === 'user' ? '#F3F4F6' : m.sender === 'admin' ? '#D1FAE5' : '#E0F2FE',
+                      color: m.sender === 'user' ? '#1F2937' : m.sender === 'admin' ? '#065F46' : '#0369A1',
+                      borderRadius: 16, borderBottomLeftRadius: m.sender === 'user' ? 4 : 16,
+                      borderBottomRightRadius: m.sender !== 'user' ? 4 : 16,
+                      padding: '10px 14px', margin: '4px 0', maxWidth: '65%'
+                    }}>
+                      <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 3, fontWeight: 600, textTransform: 'capitalize' }}>
+                        {m.sender}
+                      </div>
+                      <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                      <div style={{ fontSize: 9, opacity: 0.4, alignSelf: 'flex-end', marginTop: 4 }}>
+                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{m.text}</div>
-                    <div style={{ fontSize: 9, opacity: 0.4, alignSelf: 'flex-end', marginTop: 4 }}>
-                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -1024,7 +1061,7 @@ function Dashboard({ api, token, onLogout }) {
   const [users, setUsers] = useState([])
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
-  const [catalogConfig, setCatalogConfig] = useState({ catalogId: '', brand: '', websiteUrl: '', broadcastImageUrl: '' })
+  const [catalogConfig, setCatalogConfig] = useState({ catalogId: '', wabaId: '', brand: '', websiteUrl: '', broadcastImageUrl: '' })
   const [stats, setStats] = useState({})
   
   const [activeTab, setActiveTab] = useState('analytics')
@@ -1071,7 +1108,7 @@ function Dashboard({ api, token, onLogout }) {
       setUsers(newUsers);
       setProducts(catalogData.products || []);
       setCategories(catalogData.categories || []);
-      setCatalogConfig(configData || { catalogId: '', brand: '', websiteUrl: '', broadcastImageUrl: '' });
+      setCatalogConfig(configData || { catalogId: '', wabaId: '', brand: '', websiteUrl: '', broadcastImageUrl: '' });
       setStats({ ...newStats, usersCount: newUsers.length });
       setSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))
     } catch { addToast('Failed to load data', 'error') }

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 /* ─── Fonts & Global ────────────────────────────────────────────────────── */
 const G = `
@@ -36,6 +36,7 @@ const PRESETS = [
     name: 'phasal_bazar_shopping',
     icon: '👋',
     body: 'Shop fresh farm products — Millets, Oils, Dals and more! Pure • Natural • Desi 🌾',
+    hasImageHeader: true,
   },
   {
     id: 'phasal_bazar_welcome',
@@ -92,6 +93,70 @@ const PRESETS = [
     body: '',
   },
 ]
+
+const MAP_PARAMS = {
+  phasal_bazar_order_confirmed: ["customer_name", "order_id", "order_total", "delivery_date"],
+  phasal_bazar_welcome: ["customer_name"],
+  phasal_bazar_order_delivered: ["customer_name", "order_id"],
+  phasal_bazar_order_cancelled: ["customer_name", "order_id"],
+  phasal_bazar_payment_request: ["customer_name", "order_id", "order_total", "link"]
+};
+
+function mapMetaTemplateToLocal(tpl) {
+  const bodyComponent = tpl.components?.find(c => c.type === 'BODY');
+  let bodyText = bodyComponent ? bodyComponent.text : '';
+
+  // Map {{1}}, {{2}} to {{customer_name}}, {{order_id}} etc.
+  const paramNames = MAP_PARAMS[tpl.name];
+  if (paramNames) {
+    paramNames.forEach((name, index) => {
+      bodyText = bodyText.replaceAll(`{{${index + 1}}}`, `{{${name}}}`);
+    });
+  } else {
+    // If it is a new custom template not in our mapping, replace {{1}} with {{param_1}}
+    const matches = bodyText.match(/{{(\d+)}}/g);
+    if (matches) {
+      matches.forEach(m => {
+        const num = m.replace(/[{}]/g, '');
+        bodyText = bodyText.replaceAll(m, `{{param_${num}}}`);
+      });
+    }
+  }
+
+  // Determine category badge colors
+  let categoryColor = '#374151';
+  let categoryBg = '#F1F5F9';
+  let categoryLabel = 'Utility';
+  if (tpl.category === 'UTILITY') {
+    categoryColor = '#065F46';
+    categoryBg = '#D1FAE5';
+    categoryLabel = 'Utility';
+  } else if (tpl.category === 'MARKETING') {
+    categoryColor = '#6D28D9';
+    categoryBg = '#EDE9FE';
+    categoryLabel = 'Marketing';
+  } else if (tpl.category === 'AUTHENTICATION') {
+    categoryColor = '#1E40AF';
+    categoryBg = '#DBEAFE';
+    categoryLabel = 'Authentication';
+  }
+
+  const headerComponent = tpl.components?.find(c => c.type === 'HEADER');
+  const hasImageHeader = headerComponent && headerComponent.format === 'IMAGE';
+
+  return {
+    id: tpl.name,
+    name: tpl.name,
+    category: categoryLabel,
+    categoryColor,
+    categoryBg,
+    icon: tpl.category === 'UTILITY' ? '✅' : tpl.category === 'MARKETING' ? '🌾' : '🔑',
+    body: bodyText,
+    metaTemplate: true,
+    status: tpl.status,
+    hasImageHeader: !!hasImageHeader
+  };
+}
 
 /* ─── Helpers ───────────────────────────────────────────────────────────── */
 function renderPreview(text) {
@@ -180,17 +245,94 @@ function PhonePreview({ text, senderName }) {
 }
 
 /* ─── Main App ──────────────────────────────────────────────────────────── */
-export default function BroadcastTemplates({ onSelect, onClose }) {
-  const [activePreset, setActivePreset] = useState(PRESETS[0])
-  const [body,         setBody]         = useState(PRESETS[0].body)
-  const [templateName, setTemplateName] = useState(PRESETS[0].name)
+export default function BroadcastTemplates({ api, token, onSelect, onClose }) {
+  const [presets,      setPresets]      = useState(PRESETS)
+  const [loading,      setLoading]      = useState(true)
+  const [activePreset, setActivePreset] = useState(null)
+  const [body,         setBody]         = useState('')
+  const [templateName, setTemplateName] = useState('')
   const [copied,       setCopied]       = useState(false)
   const [saved,        setSaved]        = useState([])
   const [activeTab,    setActiveTab]    = useState('compose')   // compose | saved
   const [filter,       setFilter]       = useState('All')
   const textRef = useRef(null)
 
-  const cats = ['All', ...Array.from(new Set(PRESETS.map(p => p.category)))]
+  const [syncError,    setSyncError]    = useState('')
+  const [wabaIdInput,  setWabaIdInput]  = useState('')
+  const [savingWaba,   setSavingWaba]   = useState(false)
+
+  // Fetch templates from the backend (which proxies the Meta Graph API)
+  const fetchTemplates = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${api}/admin/templates`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (data.success && Array.isArray(data.templates) && data.templates.length > 0) {
+        const mapped = data.templates.map(mapMetaTemplateToLocal)
+        // Append custom template at the end
+        mapped.push(PRESETS[PRESETS.length - 1])
+        setPresets(mapped)
+        setSyncError('')
+      } else {
+        setPresets(PRESETS)
+        if (data.message || data.error) {
+          setSyncError(data.message || data.error)
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching Meta templates:", err)
+      setPresets(PRESETS)
+      setSyncError(err.message || 'Server error fetching templates')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    if (api && token) {
+      fetchTemplates()
+    } else {
+      setPresets(PRESETS)
+      setLoading(false)
+    }
+  }, [api, token])
+
+  const saveWabaId = async () => {
+    if (!wabaIdInput.trim()) return
+    setSavingWaba(true)
+    try {
+      const res = await fetch(`${api}/admin/catalog/config`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ wabaId: wabaIdInput.trim() })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSyncError('')
+        await fetchTemplates()
+      } else {
+        setSyncError(data.error || 'Failed to save configuration')
+      }
+    } catch (err) {
+      setSyncError(err.message || 'Failed to save configuration')
+    }
+    setSavingWaba(false)
+  }
+
+  // Initialize values when presets load
+  useEffect(() => {
+    if (presets.length > 0 && !activePreset) {
+      setActivePreset(presets[0])
+      setBody(presets[0].body)
+      setTemplateName(presets[0].name)
+    }
+  }, [presets, activePreset])
+
+  const cats = ['All', ...Array.from(new Set(presets.map(p => p.category)))]
 
   const selectPreset = (p) => {
     setActivePreset(p)
@@ -234,7 +376,7 @@ export default function BroadcastTemplates({ onSelect, onClose }) {
 
   const deleteTemplate = (id) => setSaved(s => s.filter(x => x.id !== id))
 
-  const filteredPresets = filter === 'All' ? PRESETS : PRESETS.filter(p => p.category === filter)
+  const filteredPresets = filter === 'All' ? presets : presets.filter(p => p.category === filter)
   const { chars } = charCount(body)
 
   /* ── render ── */
@@ -249,9 +391,84 @@ export default function BroadcastTemplates({ onSelect, onClose }) {
           {/* ── LEFT: Template Picker ───────────────────────────── */}
           <aside style={{ borderRight:'1px solid #E2E8F0', background:'#fff', overflowY:'auto' }}>
             <div style={{ padding:'16px 16px 10px', borderBottom:'1px solid #F1F5F9' }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.6px', marginBottom:10 }}>
-                Template Library
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.6px' }}>
+                  Template Library
+                </div>
+                <button
+                  onClick={fetchTemplates}
+                  disabled={loading}
+                  style={{
+                    background: '#F1F5F9',
+                    color: '#4B5563',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  {loading ? 'Syncing...' : '🔄 Sync Templates'}
+                </button>
               </div>
+
+              {syncError && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8,
+                  padding: '10px 12px', fontSize: 11, color: '#92400E', marginBottom: 12, lineHeight: 1.45 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>⚠️ Sync Warning:</div>
+                  <div style={{ fontSize: 10.5, color: '#B45309', wordBreak: 'break-word' }}>
+                    {syncError === 'WABA_ID_MISSING' 
+                      ? "WhatsApp Business Account (WABA) ID is not configured." 
+                      : syncError}
+                  </div>
+                  {syncError === 'WABA_ID_MISSING' ? (
+                    <div style={{ marginTop: 8 }}>
+                      <input
+                        type="text"
+                        placeholder="Enter WABA ID (e.g. 109284058291)"
+                        value={wabaIdInput}
+                        onChange={e => setWabaIdInput(e.target.value)}
+                        style={{
+                          width: '100%',
+                          border: '1px solid #FCD34D',
+                          borderRadius: 6,
+                          padding: '5px 8px',
+                          fontSize: 11,
+                          outline: 'none',
+                          marginBottom: 6,
+                          background: '#fff'
+                        }}
+                      />
+                      <button
+                        onClick={saveWabaId}
+                        disabled={savingWaba || !wabaIdInput.trim()}
+                        style={{
+                          width: '100%',
+                          background: '#D97706',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '5px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {savingWaba ? 'Saving...' : '💾 Save & Sync'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 5, fontSize: 9.5, color: '#92400E', fontWeight: 600 }}>
+                      Using offline templates fallback.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Category filter */}
               <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                 {cats.map(c => (
@@ -267,17 +484,34 @@ export default function BroadcastTemplates({ onSelect, onClose }) {
             </div>
 
             <div style={{ padding:10, display:'flex', flexDirection:'column', gap:4 }}>
-              {filteredPresets.map(p => (
-                <div key={p.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, marginBottom: 14, background: '#F9FAFB', padding: 16, position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,flexWrap:"wrap" }}>
-                    <span style={{ fontSize: 20 }}>{p.icon}</span>
-                    <span style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</span>
-                    <CatBadge label={p.category} color={p.categoryColor} bg={p.categoryBg} />
-                    <button onClick={() => onSelect && onSelect(p)} style={{ marginLeft: 'auto', background: '#059669', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Use</button>
-                  </div>
-                  {/* <pre style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, fontFamily: 'DM Sans,sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{p.body}</pre> */}
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '50px 10px', color: '#94A3B8' }}>
+                  <div style={{ fontSize: 18, animation: 'spin 1.8s linear infinite', display: 'inline-block', marginBottom: 8 }}>↻</div>
+                  <div style={{ fontSize: 12, fontWeight: 500 }}>Syncing Meta Templates…</div>
                 </div>
-              ))}
+              ) : filteredPresets.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: '#94A3B8', fontSize: 12 }}>
+                  No templates found
+                </div>
+              ) : (
+                filteredPresets.map(p => (
+                  <div key={p.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, marginBottom: 14, background: '#F9FAFB', padding: 16, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 20 }}>{p.icon}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{p.name}</span>
+                      <CatBadge label={p.category} color={p.categoryColor} bg={p.categoryBg} />
+                      {p.status && (
+                        <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '2px 6px',
+                          background: p.status === 'APPROVED' ? '#DCFCE7' : p.status === 'PENDING' ? '#FEF3C7' : '#FEE2E2',
+                          color: p.status === 'APPROVED' ? '#16A34A' : p.status === 'PENDING' ? '#D97706' : '#DC2626' }}>
+                          {p.status}
+                        </span>
+                      )}
+                      <button onClick={() => onSelect && onSelect(p)} style={{ marginLeft: 'auto', background: '#059669', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Use</button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </aside>
 
