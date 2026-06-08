@@ -155,6 +155,7 @@ export default function Broadcast({ api, token, onBack }) {
   const [broadcastErrors, setBroadcastErrors] = useState([])
   const [showGuide,       setShowGuide]       = useState(false)
   const [templateHasImageHeader, setTemplateHasImageHeader] = useState(false)
+  const [templateLanguage, setTemplateLanguage] = useState('en')
   const [customHeaderImage, setCustomHeaderImage] = useState('')
   const [uploadingImage, setUploadingImage] = useState(false)
   const [users,         setUsers]         = useState([])
@@ -265,7 +266,7 @@ export default function Broadcast({ api, token, onBack }) {
       }
     }
 
-    if (!user || !user.updatedAt) return { status: 'expired', label: 'Expired (24h Window)', color: '#DC2626', bg: '#FEE2E2' };
+    if (!user || !user.updatedAt) return { status: 'expired', label: 'Use Template (24h Over)', color: '#DC2626', bg: '#FEE2E2' };
     const lastInteraction = new Date(user.updatedAt);
     const diffMs = Date.now() - lastInteraction.getTime();
     const isWithin24h = diffMs < 24 * 60 * 60 * 1000;
@@ -278,7 +279,7 @@ export default function Broadcast({ api, token, onBack }) {
       timeStr += `${minutes}m left`;
       return { status: 'active', label: `Active (${timeStr})`, color: '#16A34A', bg: '#DCFCE7' };
     }
-    return { status: 'expired', label: 'Expired (24h Window)', color: '#DC2626', bg: '#FEE2E2' };
+    return { status: 'expired', label: 'Use Template (24h Over)', color: '#DC2626', bg: '#FEE2E2' };
   }
 
   // Check if any selected recipient has an expired 24h window
@@ -390,7 +391,7 @@ export default function Broadcast({ api, token, onBack }) {
       const res = await fetch(`${api}/admin/broadcast`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: message, phones, data, useTemplate, templateName, headerImage: customHeaderImage || undefined }),
+        body: JSON.stringify({ template: message, phones, data, useTemplate, templateName, templateLanguage, headerImage: customHeaderImage || undefined }),
       })
 
       const json = await res.json()
@@ -450,6 +451,7 @@ export default function Broadcast({ api, token, onBack }) {
               setUseTemplate(false)
             }
             setTemplateHasImageHeader(tpl.hasImageHeader || false)
+            setTemplateLanguage(tpl.language || 'en')
             setCustomHeaderImage('')
             // Pre-seed known auto-defaults immediately (no useEffect timing issue)
             setVarValues(v => ({ shop_name: 'Phasal Bazar', ...v }))

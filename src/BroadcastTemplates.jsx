@@ -154,7 +154,8 @@ function mapMetaTemplateToLocal(tpl) {
     body: bodyText,
     metaTemplate: true,
     status: tpl.status,
-    hasImageHeader: !!hasImageHeader
+    hasImageHeader: !!hasImageHeader,
+    language: tpl.language || 'en'
   };
 }
 
@@ -495,7 +496,30 @@ export default function BroadcastTemplates({ api, token, onSelect, onClose }) {
                 </div>
               ) : (
                 filteredPresets.map(p => (
-                  <div key={p.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, marginBottom: 14, background: '#F9FAFB', padding: 16, position: 'relative' }}>
+                  <div key={p.id} 
+                    onClick={() => selectPreset(p)}
+                    style={{ 
+                      border: p.id === activePreset?.id ? '2px solid #10B981' : '1px solid #E5E7EB', 
+                      borderRadius: 10, 
+                      marginBottom: 14, 
+                      background: p.id === activePreset?.id ? '#F0FDF4' : '#F9FAFB', 
+                      padding: 16, 
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => {
+                      if (p.id !== activePreset?.id) {
+                        e.currentTarget.style.borderColor = '#10B981';
+                        e.currentTarget.style.background = '#F0FDF4';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (p.id !== activePreset?.id) {
+                        e.currentTarget.style.borderColor = '#E5E7EB';
+                        e.currentTarget.style.background = '#F9FAFB';
+                      }
+                    }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 20 }}>{p.icon}</span>
                       <span style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{p.name}</span>
@@ -507,8 +531,27 @@ export default function BroadcastTemplates({ api, token, onSelect, onClose }) {
                           {p.status}
                         </span>
                       )}
-                      <button onClick={() => onSelect && onSelect(p)} style={{ marginLeft: 'auto', background: '#059669', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Use</button>
+                      <button onClick={(e) => { e.stopPropagation(); selectPreset(p); }} style={{ marginLeft: 'auto', background: p.id === activePreset?.id ? '#10B981' : '#059669', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        {p.id === activePreset?.id ? 'Selected ✓' : 'Select'}
+                      </button>
                     </div>
+                    {p.body && (
+                      <pre style={{ 
+                        fontSize: 12.5, 
+                        color: '#4B5563', 
+                        lineHeight: 1.6, 
+                        fontFamily: 'DM Sans,sans-serif', 
+                        whiteSpace: 'pre-wrap', 
+                        wordBreak: 'break-word', 
+                        margin: '8px 0 0 0',
+                        background: '#fff',
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        border: '1px solid #E5E7EB'
+                      }}>
+                        {p.body}
+                      </pre>
+                    )}
                   </div>
                 ))
               )}
@@ -610,6 +653,30 @@ export default function BroadcastTemplates({ api, token, onSelect, onClose }) {
           {/* ── RIGHT: Phone Preview ────────────────────────────── */}
           <aside style={{ borderLeft:'1px solid #E2E8F0', background:'#fff', padding:'28px 20px',
             display:'flex', flexDirection:'column', gap:20, overflowY:'auto' }}>
+            <button 
+              onClick={() => onSelect && onSelect({ ...activePreset, body, name: templateName })}
+              style={{
+                width: '100%',
+                background: '#16A34A',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                padding: '12px 16px',
+                fontWeight: 700,
+                fontSize: 14,
+                boxShadow: '0 2px 8px rgba(22,163,74,.25)',
+                transition: 'background .15s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor: 'pointer'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#15803d'}
+              onMouseLeave={e => e.currentTarget.style.background = '#16A34A'}
+            >
+              📥 Use this Template
+            </button>
             <div>
               <div style={{ fontSize:11, fontWeight:700, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.6px', marginBottom:16 }}>
                 Live Preview
