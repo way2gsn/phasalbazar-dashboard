@@ -1154,7 +1154,7 @@ function Dashboard({ api, token, onLogout }) {
 
   const deleteCustomer = async (phone) => {
     try {
-      const res = await fetch(`${api}/admin/users/${phone}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch(`${api}/admin/users/${encodeURIComponent(phone)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || 'Failed to delete customer');
