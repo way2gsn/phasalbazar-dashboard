@@ -907,8 +907,9 @@ function LiveChatView({ api, token, customers, addToast }) {
   );
 }
 
-function CustomerDrawer({ customer, orders, onClose }) {
+function CustomerDrawer({ customer, orders, onClose, onDelete }) {
   if (!customer) return null;
+  const [busy, setBusy] = useState(false);
   const customerOrders = orders.filter(o => o.customerPhone === customer.phone);
   const ltv = customerOrders.filter(o => o.orderStatus !== 'cancelled').reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
@@ -980,6 +981,20 @@ function CustomerDrawer({ customer, orders, onClose }) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', background: '#FAFAFA', display: 'flex', justifyContent: 'flex-start' }}>
+          <button className="btn" onClick={async () => {
+            if (confirm(`Remove customer ${customer.name || customer.phone}? This will permanently delete this customer from the database.`)) {
+              setBusy(true);
+              await onDelete(customer.phone);
+              setBusy(false);
+              onClose();
+            }
+          }} disabled={busy} style={{ background: 'none', border: '1px solid #FECACA', color: '#DC2626', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            🗑️ Remove Customer
+          </button>
         </div>
       </div>
     </>
@@ -1137,6 +1152,45 @@ function Dashboard({ api, token, onLogout }) {
     } catch { addToast('Delete failed', 'error') }
   }
 
+  const deleteCustomer = async (phone) => {
+    try {
+      const res = await fetch(`${api}/admin/users/${phone}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to delete customer');
+      }
+      await load(true);
+      addToast('Customer removed successfully');
+    } catch (err) {
+      addToast(err.message || 'Delete failed', 'error');
+    }
+  }
+
+  const downloadSampleCSV = () => {
+    const headers = ['phone', 'name', 'address', 'customerType', 'lang'];
+    const rows = [
+      ['+919876543210', 'Rahul Sharma', '123 Main St, Mumbai', 'retail', 'en'],
+      ['+918765432109', 'Priya Patel', '456 Park Road, Delhi', 'wholesale', 'hi'],
+      ['+917654321098', 'Amit Kumar', '789 Market Lane, Bangalore', 'retail', 'te']
+    ];
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'sample_customers.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast('Sample CSV downloaded');
+  };
+
   const exportExcel = () => {
     const rows = orders.map(o => {
       const items = parseItems(o.items)
@@ -1173,7 +1227,7 @@ function Dashboard({ api, token, onLogout }) {
     reader.onload = async (evt) => {
       try {
         const data = evt.target.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet);
@@ -1228,7 +1282,7 @@ function Dashboard({ api, token, onLogout }) {
       }
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const filteredOrders = orders
@@ -1294,7 +1348,7 @@ function Dashboard({ api, token, onLogout }) {
       </div>
 
       {selected && <OrderModal order={selected} onClose={() => setSelected(null)} onUpdate={updateOrder} onDelete={deleteOrder} />}
-      {selectedCustomer && <CustomerDrawer customer={selectedCustomer} orders={orders} onClose={() => setSelectedCustomer(null)} />}
+      {selectedCustomer && <CustomerDrawer customer={selectedCustomer} orders={orders} onClose={() => setSelectedCustomer(null)} onDelete={deleteCustomer} />}
 
       {/* ── Sidebar ────────────────────────────────────────────────────────── */}
       <aside style={{ width: 230, flexShrink: 0, background: '#fff', borderRight: '1px solid #E6F4EA', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
@@ -1419,6 +1473,13 @@ function Dashboard({ api, token, onLogout }) {
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
                           {`${filteredUsers.length} ${filteredUsers.length === 1 ? 'customer' : 'customers'}`}
                           {search && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> matching "{search}"</span>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+                          <span style={{ color: '#6B7280' }}>Formats: CSV, Excel (.xlsx, .xls)</span>
+                          <span style={{ color: '#E5E7EB' }}>|</span>
+                          <button onClick={downloadSampleCSV} style={{ background: 'none', border: 'none', color: '#059669', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, fontSize: 12 }}>
+                            📥 Download Sample CSV
+                          </button>
                         </div>
                       </div>
 
